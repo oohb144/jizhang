@@ -4,6 +4,7 @@ class Category {
   final String? parentName; // 一级分类名称，null表示是一级分类
   final String icon;
   final int sortOrder;
+  final String type; // 'expense' or 'income'
 
   Category({
     this.id,
@@ -11,6 +12,7 @@ class Category {
     this.parentName,
     required this.icon,
     this.sortOrder = 0,
+    this.type = 'expense',
   });
 
   Map<String, dynamic> toMap() {
@@ -20,6 +22,7 @@ class Category {
       'parent_name': parentName,
       'icon': icon,
       'sort_order': sortOrder,
+      'type': type,
     };
   }
 
@@ -30,6 +33,7 @@ class Category {
       parentName: map['parent_name'] as String?,
       icon: map['icon'] as String,
       sortOrder: map['sort_order'] as int? ?? 0,
+      type: map['type'] as String? ?? 'expense',
     );
   }
 }

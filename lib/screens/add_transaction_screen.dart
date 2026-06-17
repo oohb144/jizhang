@@ -18,6 +18,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
   String? _selectedMainCategory;
   String? _selectedSubCategory;
   int? _selectedAccountId;
+  bool _isExpense = true;
   List<Account> _accounts = [];
   List<Category> _mainCategories = [];
   List<Category> _subCategories = [];
@@ -30,7 +31,9 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
 
   Future<void> _loadData() async {
     final accounts = await DatabaseHelper.instance.getAccounts();
-    final mainCategories = await DatabaseHelper.instance.getMainCategories();
+    final mainCategories = await DatabaseHelper.instance.getMainCategoriesByType(
+      _isExpense ? 'expense' : 'income',
+    );
 
     setState(() {
       _accounts = accounts;
@@ -46,11 +49,21 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
   }
 
   Future<void> _loadSubCategories(String parentName) async {
-    final subCategories = await DatabaseHelper.instance.getSubCategories(parentName);
+    final subCategories = await DatabaseHelper.instance.getSubCategoriesByParentAndType(
+      parentName,
+      _isExpense ? 'expense' : 'income',
+    );
     setState(() {
       _subCategories = subCategories;
       _selectedSubCategory = subCategories.isNotEmpty ? subCategories.first.name : null;
     });
+  }
+
+  Future<void> _onMainCategoryChanged(String name) async {
+    setState(() {
+      _selectedMainCategory = name;
+    });
+    await _loadSubCategories(name);
   }
 
   @override
@@ -130,6 +143,22 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
         return Icons.school;
       case 'card_giftcard':
         return Icons.card_giftcard;
+      case 'payments':
+        return Icons.payments;
+      case 'account_balance':
+        return Icons.account_balance;
+      case 'savings':
+        return Icons.savings;
+      case 'trending_up':
+        return Icons.trending_up;
+      case 'add_circle':
+        return Icons.add_circle;
+      case 'restore':
+        return Icons.restore;
+      case 'work':
+        return Icons.work;
+      case 'access_time':
+        return Icons.access_time;
       default:
         return Icons.category;
     }
@@ -153,6 +182,12 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
         return Colors.indigo;
       case '其他':
         return Colors.grey;
+      case '工资':
+        return Colors.teal;
+      case '投资理财':
+        return Colors.indigoAccent;
+      case '其他收入':
+        return Colors.lime;
       default:
         return Colors.teal;
     }
@@ -188,9 +223,12 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
       return;
     }
 
+    // 支出为负数，收入为正数
+    final finalAmount = _isExpense ? -amount : amount;
+
     final transaction = model.Transaction(
       accountId: _selectedAccountId!,
-      amount: -amount,
+      amount: finalAmount,
       category: _selectedMainCategory!,
       subcategory: _selectedSubCategory,
       note: _noteController.text.isEmpty ? null : _noteController.text,
@@ -207,6 +245,9 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final typeColor = _isExpense ? Colors.red : Colors.green;
+    final typeLabel = _isExpense ? '支出金额' : '收入金额';
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('记账'),
@@ -218,6 +259,72 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // 支出/收入切换
+            Card(
+              elevation: 4,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              child: Padding(
+                padding: const EdgeInsets.all(4),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () {
+                          if (_isExpense) return;
+                          setState(() => _isExpense = true);
+                          _loadData();
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          decoration: BoxDecoration(
+                            color: _isExpense ? Colors.red : Colors.transparent,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Center(
+                            child: Text(
+                              '支出',
+                              style: TextStyle(
+                                color: _isExpense ? Colors.white : Colors.grey,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () {
+                          if (!_isExpense) return;
+                          setState(() => _isExpense = false);
+                          _loadData();
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          decoration: BoxDecoration(
+                            color: !_isExpense ? Colors.green : Colors.transparent,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Center(
+                            child: Text(
+                              '收入',
+                              style: TextStyle(
+                                color: !_isExpense ? Colors.white : Colors.grey,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+
             // 金额输入
             Card(
               elevation: 4,
@@ -226,9 +333,9 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
                 padding: const EdgeInsets.all(20),
                 child: Column(
                   children: [
-                    const Text(
-                      '支出金额',
-                      style: TextStyle(
+                    Text(
+                      typeLabel,
+                      style: const TextStyle(
                         fontSize: 14,
                         color: Colors.grey,
                       ),
@@ -245,12 +352,12 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
                         fontSize: 36,
                         fontWeight: FontWeight.bold,
                       ),
-                      decoration: const InputDecoration(
+                      decoration: InputDecoration(
                         prefixText: '¥ ',
                         prefixStyle: TextStyle(
                           fontSize: 36,
                           fontWeight: FontWeight.bold,
-                          color: Colors.red,
+                          color: typeColor,
                         ),
                         border: InputBorder.none,
                         hintText: '0.00',
@@ -338,12 +445,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
                 final color = _getCategoryColor(category.name);
 
                 return GestureDetector(
-                  onTap: () {
-                    setState(() {
-                      _selectedMainCategory = category.name;
-                    });
-                    _loadSubCategories(category.name);
-                  },
+                  onTap: () => _onMainCategoryChanged(category.name),
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                     decoration: BoxDecoration(
@@ -471,7 +573,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
               child: ElevatedButton(
                 onPressed: _saveTransaction,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF2196F3),
+                  backgroundColor: typeColor,
                   foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),

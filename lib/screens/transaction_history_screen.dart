@@ -44,6 +44,12 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
         return Icons.shopping_bag;
       case '其他':
         return Icons.more_horiz;
+      case '工资':
+        return Icons.payments;
+      case '投资理财':
+        return Icons.trending_up;
+      case '其他收入':
+        return Icons.add_circle;
       default:
         return Icons.category;
     }
@@ -67,6 +73,12 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
         return Colors.indigo;
       case '其他':
         return Colors.grey;
+      case '工资':
+        return Colors.teal;
+      case '投资理财':
+        return Colors.indigoAccent;
+      case '其他收入':
+        return Colors.lime;
       default:
         return Colors.teal;
     }
@@ -105,8 +117,11 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
               itemBuilder: (context, index) {
                 final dateKey = dateKeys[index];
                 final items = grouped[dateKey]!;
-                final dayTotal = items
+                final dayExpenses = items
                     .where((t) => t.amount < 0)
+                    .fold<double>(0, (sum, t) => sum + t.amount.abs());
+                final dayIncome = items
+                    .where((t) => t.amount > 0)
                     .fold<double>(0, (sum, t) => sum + t.amount);
 
                 return Column(
@@ -125,13 +140,30 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
                               color: Colors.grey,
                             ),
                           ),
-                          Text(
-                            '支出 ¥${dayTotal.abs().toStringAsFixed(2)}',
-                            style: const TextStyle(
-                              fontSize: 13,
-                              color: Colors.red,
+                          if (dayExpenses > 0 || dayIncome > 0)
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (dayExpenses > 0)
+                                  Text(
+                                    '支 ${dayExpenses.toStringAsFixed(2)}',
+                                    style: const TextStyle(
+                                      fontSize: 13,
+                                      color: Colors.red,
+                                    ),
+                                  ),
+                                if (dayExpenses > 0 && dayIncome > 0)
+                                  const SizedBox(width: 8),
+                                if (dayIncome > 0)
+                                  Text(
+                                    '收 ${dayIncome.toStringAsFixed(2)}',
+                                    style: const TextStyle(
+                                      fontSize: 13,
+                                      color: Colors.green,
+                                    ),
+                                  ),
+                              ],
                             ),
-                          ),
                         ],
                       ),
                     ),

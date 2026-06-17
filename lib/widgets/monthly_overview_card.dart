@@ -3,11 +3,13 @@ import 'package:flutter/material.dart';
 class MonthlyOverviewCard extends StatelessWidget {
   final double monthlySpending;
   final double monthlyBudget;
+  final double monthlyIncome;
 
   const MonthlyOverviewCard({
     super.key,
     required this.monthlySpending,
     required this.monthlyBudget,
+    this.monthlyIncome = 0,
   });
 
   @override
@@ -46,7 +48,15 @@ class MonthlyOverviewCard extends StatelessWidget {
                     Colors.red,
                   ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _buildInfoCard(
+                    '总收入',
+                    '¥${monthlyIncome.toStringAsFixed(2)}',
+                    Colors.green,
+                  ),
+                ),
+                const SizedBox(width: 8),
                 Expanded(
                   child: _buildInfoCard(
                     '预算剩余',
@@ -64,7 +74,7 @@ class MonthlyOverviewCard extends StatelessWidget {
 
   Widget _buildInfoCard(String label, String value, Color color) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: color.withOpacity(0.1),
         borderRadius: BorderRadius.circular(12),
@@ -83,7 +93,7 @@ class MonthlyOverviewCard extends StatelessWidget {
           Text(
             value,
             style: TextStyle(
-              fontSize: 20,
+              fontSize: 18,
               fontWeight: FontWeight.bold,
               color: color,
             ),

@@ -136,6 +136,12 @@ class TransactionList extends StatelessWidget {
         return Icons.shopping_bag;
       case '其他':
         return Icons.more_horiz;
+      case '工资':
+        return Icons.payments;
+      case '投资理财':
+        return Icons.trending_up;
+      case '其他收入':
+        return Icons.add_circle;
       default:
         return Icons.category;
     }
@@ -159,6 +165,12 @@ class TransactionList extends StatelessWidget {
         return Colors.indigo;
       case '其他':
         return Colors.grey;
+      case '工资':
+        return Colors.teal;
+      case '投资理财':
+        return Colors.indigoAccent;
+      case '其他收入':
+        return Colors.lime;
       default:
         return Colors.teal;
     }

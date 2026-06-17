@@ -118,10 +118,23 @@ class DatabaseHelper {
       {'id': 28, 'name': '衣物', 'parent_name': '购物', 'icon': 'checkroom', 'sort_order': 27},
       {'id': 29, 'name': '电子产品', 'parent_name': '购物', 'icon': 'devices', 'sort_order': 28},
       {'id': 30, 'name': '其他购物', 'parent_name': '购物', 'icon': 'add_shopping_cart', 'sort_order': 29},
-      {'id': 31, 'name': '其他', 'parent_name': null, 'icon': 'more_horiz', 'sort_order': 30},
-      {'id': 32, 'name': '医疗', 'parent_name': '其他', 'icon': 'local_hospital', 'sort_order': 31},
-      {'id': 33, 'name': '教育', 'parent_name': '其他', 'icon': 'school', 'sort_order': 32},
-      {'id': 34, 'name': '社交/礼物', 'parent_name': '其他', 'icon': 'card_giftcard', 'sort_order': 33},
+      {'id': 31, 'name': '其他', 'parent_name': null, 'icon': 'more_horiz', 'sort_order': 30, 'type': 'expense'},
+      {'id': 32, 'name': '医疗', 'parent_name': '其他', 'icon': 'local_hospital', 'sort_order': 31, 'type': 'expense'},
+      {'id': 33, 'name': '教育', 'parent_name': '其他', 'icon': 'school', 'sort_order': 32, 'type': 'expense'},
+      {'id': 34, 'name': '社交/礼物', 'parent_name': '其他', 'icon': 'card_giftcard', 'sort_order': 33, 'type': 'expense'},
+      // 收入类分类
+      {'id': 35, 'name': '工资', 'parent_name': null, 'icon': 'payments', 'sort_order': 34, 'type': 'income'},
+      {'id': 36, 'name': '基本工资', 'parent_name': '工资', 'icon': 'account_balance', 'sort_order': 35, 'type': 'income'},
+      {'id': 37, 'name': '奖金', 'parent_name': '工资', 'icon': 'card_giftcard', 'sort_order': 36, 'type': 'income'},
+      {'id': 38, 'name': '加班费', 'parent_name': '工资', 'icon': 'access_time', 'sort_order': 37, 'type': 'income'},
+      {'id': 39, 'name': '投资理财', 'parent_name': null, 'icon': 'trending_up', 'sort_order': 38, 'type': 'income'},
+      {'id': 40, 'name': '利息', 'parent_name': '投资理财', 'icon': 'savings', 'sort_order': 39, 'type': 'income'},
+      {'id': 41, 'name': '股息', 'parent_name': '投资理财', 'icon': 'show_chart', 'sort_order': 40, 'type': 'income'},
+      {'id': 42, 'name': '投资收益', 'parent_name': '投资理财', 'icon': 'trending_up', 'sort_order': 41, 'type': 'income'},
+      {'id': 43, 'name': '其他收入', 'parent_name': null, 'icon': 'add_circle', 'sort_order': 42, 'type': 'income'},
+      {'id': 44, 'name': '红包', 'parent_name': '其他收入', 'icon': 'card_giftcard', 'sort_order': 43, 'type': 'income'},
+      {'id': 45, 'name': '退款', 'parent_name': '其他收入', 'icon': 'restore', 'sort_order': 44, 'type': 'income'},
+      {'id': 46, 'name': '兼职', 'parent_name': '其他收入', 'icon': 'work', 'sort_order': 45, 'type': 'income'},
     ];
   }
 
@@ -215,6 +228,78 @@ class DatabaseHelper {
         .toList();
     list.sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
     return list;
+  }
+
+  Future<List<Category>> getMainCategoriesByType(String type) async {
+    await _ensureInitialized();
+    final list = _data['categories']!
+        .where((c) => c['parent_name'] == null && (c['type'] as String? ?? 'expense') == type)
+        .map((map) => Category.fromMap(map))
+        .toList();
+    list.sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+    return list;
+  }
+
+  Future<List<Category>> getSubCategoriesByParentAndType(String parentName, String type) async {
+    await _ensureInitialized();
+    final list = _data['categories']!
+        .where((c) => c['parent_name'] == parentName && (c['type'] as String? ?? 'expense') == type)
+        .map((map) => Category.fromMap(map))
+        .toList();
+    list.sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+    return list;
+  }
+
+  Future<double> getTodayIncome() async {
+    await _ensureInitialized();
+    final today = DateTime.now();
+    final startOfDay = DateTime(today.year, today.month, today.day);
+    final endOfDay = startOfDay.add(const Duration(days: 1));
+
+    double total = 0;
+    for (final t in _data['transactions']!) {
+      final date = DateTime.parse(t['transaction_date']);
+      if (date.isAfter(startOfDay) && date.isBefore(endOfDay)) {
+        final amount = (t['amount'] as num).toDouble();
+        if (amount > 0) total += amount;
+      }
+    }
+    return total;
+  }
+
+  Future<double> getMonthIncome(int year, int month) async {
+    await _ensureInitialized();
+    final startOfMonth = DateTime(year, month, 1);
+    final endOfMonth = DateTime(year, month + 1, 1);
+
+    double total = 0;
+    for (final t in _data['transactions']!) {
+      final date = DateTime.parse(t['transaction_date']);
+      if (date.isAfter(startOfMonth) && date.isBefore(endOfMonth)) {
+        final amount = (t['amount'] as num).toDouble();
+        if (amount > 0) total += amount;
+      }
+    }
+    return total;
+  }
+
+  Future<Map<String, double>> getCategoryIncome(int year, int month) async {
+    await _ensureInitialized();
+    final startOfMonth = DateTime(year, month, 1);
+    final endOfMonth = DateTime(year, month + 1, 1);
+
+    Map<String, double> income = {};
+    for (final t in _data['transactions']!) {
+      final date = DateTime.parse(t['transaction_date']);
+      if (date.isAfter(startOfMonth) && date.isBefore(endOfMonth)) {
+        final amount = (t['amount'] as num).toDouble();
+        if (amount > 0) {
+          final cat = t['subcategory'] ?? t['category'] as String;
+          income[cat] = (income[cat] ?? 0) + amount;
+        }
+      }
+    }
+    return income;
   }
 
   // ========== 交易记录操作 ==========

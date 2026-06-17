@@ -27,6 +27,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Budget? _budget;
   double _todaySpending = 0;
   double _monthSpending = 0;
+  double _monthIncome = 0;
   double _dailyBudget = 0;
   Map<String, double> _categorySpending = {};
 
@@ -44,6 +45,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final budget = await DatabaseHelper.instance.getBudgetByMonth(month);
     final todaySpending = await DatabaseHelper.instance.getTodaySpending();
     final monthSpending = await DatabaseHelper.instance.getMonthSpending(now.year, now.month);
+    final monthIncome = await DatabaseHelper.instance.getMonthIncome(now.year, now.month);
     final categorySpending = await DatabaseHelper.instance.getCategorySpending(now.year, now.month);
 
     double dailyBudget = 0;
@@ -59,6 +61,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _budget = budget;
       _todaySpending = todaySpending;
       _monthSpending = monthSpending;
+      _monthIncome = monthIncome;
       _dailyBudget = dailyBudget;
       _categorySpending = categorySpending;
     });
@@ -220,6 +223,7 @@ class _HomeScreenState extends State<HomeScreen> {
               MonthlyOverviewCard(
                 monthlySpending: _monthSpending,
                 monthlyBudget: _budget?.totalAmount ?? 0,
+                monthlyIncome: _monthIncome,
               ),
               const SizedBox(height: 16),
 
