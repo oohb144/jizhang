@@ -4,15 +4,16 @@ import '../database/database_helper.dart';
 import '../models/account.dart';
 import '../models/transaction.dart' as model;
 import '../models/budget.dart';
-import '../models/category_budget.dart';
 import '../widgets/account_card.dart';
 import '../widgets/budget_card.dart';
+import '../widgets/budget_progress_card.dart';
 import '../widgets/monthly_overview_card.dart';
 import '../widgets/transaction_list.dart';
 import 'add_transaction_screen.dart';
 import 'account_settings_screen.dart';
 import 'category_budget_screen.dart';
 import 'transaction_history_screen.dart';
+import 'history_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -29,7 +30,7 @@ class _HomeScreenState extends State<HomeScreen> {
   double _monthSpending = 0;
   double _monthIncome = 0;
   double _dailyBudget = 0;
-  Map<String, double> _categorySpending = {};
+  List<Map<String, dynamic>> _categoryBudgetsWithSpending = [];
 
   @override
   void initState() {
@@ -46,7 +47,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final todaySpending = await DatabaseHelper.instance.getTodaySpending();
     final monthSpending = await DatabaseHelper.instance.getMonthSpending(now.year, now.month);
     final monthIncome = await DatabaseHelper.instance.getMonthIncome(now.year, now.month);
-    final categorySpending = await DatabaseHelper.instance.getCategorySpending(now.year, now.month);
+    final categoryBudgetsWithSpending = await DatabaseHelper.instance.getAggregatedCategoryBudgets(month);
 
     double dailyBudget = 0;
     if (budget != null) {
@@ -63,7 +64,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _monthSpending = monthSpending;
       _monthIncome = monthIncome;
       _dailyBudget = dailyBudget;
-      _categorySpending = categorySpending;
+      _categoryBudgetsWithSpending = categoryBudgetsWithSpending;
     });
   }
 
@@ -99,6 +100,13 @@ class _HomeScreenState extends State<HomeScreen> {
     if (result == true) {
       _loadData();
     }
+  }
+
+  void _navigateToHistory() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const HistoryScreen()),
+    );
   }
 
   @override
@@ -227,6 +235,12 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               const SizedBox(height: 16),
 
+              // 分类预算进度
+              BudgetProgressCard(
+                categoryBudgets: _categoryBudgetsWithSpending,
+              ),
+              const SizedBox(height: 16),
+
               // 快捷操作
               Card(
                 elevation: 4,
@@ -249,7 +263,13 @@ class _HomeScreenState extends State<HomeScreen> {
                         onTap: _navigateToCategoryBudget,
                       ),
                       _buildQuickAction(
-                        icon: Icons.history,
+                        icon: Icons.calendar_today,
+                        label: '历史记录',
+                        color: const Color(0xFF9C27B0),
+                        onTap: _navigateToHistory,
+                      ),
+                      _buildQuickAction(
+                        icon: Icons.list_alt,
                         label: '交易记录',
                         color: const Color(0xFF4CAF50),
                         onTap: () {

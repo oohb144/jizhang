@@ -4,6 +4,7 @@ import '../database/database_helper.dart';
 import '../models/transaction.dart' as model;
 import '../models/account.dart';
 import '../models/category.dart';
+import 'category_budget_screen.dart';
 
 class AddTransactionScreen extends StatefulWidget {
   const AddTransactionScreen({super.key});
@@ -22,6 +23,9 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
   List<Account> _accounts = [];
   List<Category> _mainCategories = [];
   List<Category> _subCategories = [];
+  bool _isLoadingCategories = true;
+  String? _emptyReason;
+  bool _needCategory = true; // 收入不需要分类
 
   @override
   void initState() {
@@ -31,19 +35,51 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
 
   Future<void> _loadData() async {
     final accounts = await DatabaseHelper.instance.getAccounts();
-    final mainCategories = await DatabaseHelper.instance.getMainCategoriesByType(
-      _isExpense ? 'expense' : 'income',
-    );
+    final now = DateTime.now();
+    final month = '${now.year}-${now.month.toString().padLeft(2, '0')}';
+
+    List<Category> mainCategories;
+    String? emptyReason;
+
+    if (_isExpense) {
+      // 支出：只显示有预算分配的主分类
+      final assignedCategories = await DatabaseHelper.instance.getBudgetAssignedCategories(month, 'expense');
+      if (assignedCategories.isEmpty) {
+        emptyReason = '请先在预算管理中为分类设置预算';
+        mainCategories = [];
+      } else {
+        final allMainCats = await DatabaseHelper.instance.getMainCategoriesByType('expense');
+        mainCategories = allMainCats.where((c) => assignedCategories.contains(c.name)).toList();
+      }
+      setState(() {
+        _needCategory = true;
+      });
+    } else {
+      // 收入：不需要分类
+      mainCategories = [];
+      setState(() {
+        _needCategory = false;
+        _selectedMainCategory = null;
+        _selectedSubCategory = null;
+        _subCategories = [];
+      });
+    }
 
     setState(() {
       _accounts = accounts;
       _mainCategories = mainCategories;
+      _isLoadingCategories = false;
+      _emptyReason = emptyReason;
       if (accounts.isNotEmpty) {
         _selectedAccountId = accounts.first.id;
       }
       if (mainCategories.isNotEmpty) {
         _selectedMainCategory = mainCategories.first.name;
         _loadSubCategories(mainCategories.first.name);
+      } else {
+        _selectedMainCategory = null;
+        _selectedSubCategory = null;
+        _subCategories = [];
       }
     });
   }
@@ -208,7 +244,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
       return;
     }
 
-    if (_selectedMainCategory == null) {
+    if (_needCategory && _selectedMainCategory == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('请选择分类')),
       );
@@ -226,10 +262,13 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
     // 支出为负数，收入为正数
     final finalAmount = _isExpense ? -amount : amount;
 
+    // 收入时分类可为空，使用默认值
+    final category = _isExpense ? (_selectedMainCategory ?? '') : (_selectedMainCategory ?? '其他收入');
+
     final transaction = model.Transaction(
       accountId: _selectedAccountId!,
       amount: finalAmount,
-      category: _selectedMainCategory!,
+      category: category,
       subcategory: _selectedSubCategory,
       note: _noteController.text.isEmpty ? null : _noteController.text,
       transactionDate: DateTime.now(),
@@ -428,81 +467,69 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
             ),
             const SizedBox(height: 20),
 
-            // 选择一级分类
-            const Text(
-              '选择分类',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w500,
+            // 选择一级分类（仅支出显示）
+            if (_needCategory) ...[
+              Text(
+                '选择分类',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w500,
+                  color: _isLoadingCategories ? Colors.grey : Colors.black,
+                ),
               ),
-            ),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              children: _mainCategories.map((category) {
-                final isSelected = _selectedMainCategory == category.name;
-                final color = _getCategoryColor(category.name);
-
-                return GestureDetector(
-                  onTap: () => _onMainCategoryChanged(category.name),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                    decoration: BoxDecoration(
-                      color: isSelected ? color : Colors.grey.shade100,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                        color: isSelected ? color : Colors.grey.shade300,
-                      ),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
+              const SizedBox(height: 12),
+              if (_isLoadingCategories)
+                const Center(child: CircularProgressIndicator())
+              else if (_emptyReason != null)
+                Card(
+                  elevation: 2,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
                       children: [
-                        Icon(
-                          _getCategoryIcon(category.icon),
-                          color: isSelected ? Colors.white : color,
-                          size: 16,
-                        ),
-                        const SizedBox(width: 6),
+                        Icon(Icons.category_outlined, size: 48, color: Colors.grey.shade400),
+                        const SizedBox(height: 12),
                         Text(
-                          category.name,
+                          _emptyReason!,
+                          textAlign: TextAlign.center,
                           style: TextStyle(
-                            color: isSelected ? Colors.white : Colors.black,
-                            fontWeight: FontWeight.w500,
-                            fontSize: 13,
+                            fontSize: 14,
+                            color: Colors.grey.shade600,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        ElevatedButton.icon(
+                          onPressed: () async {
+                            final result = await Navigator.push(
+                              context,
+                              MaterialPageRoute(builder: (context) => const CategoryBudgetScreen()),
+                            );
+                            if (result == true) {
+                              _loadData(); // 重新加载分类
+                            }
+                          },
+                          icon: const Icon(Icons.tune),
+                          label: const Text('去设置预算'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF2196F3),
+                            foregroundColor: Colors.white,
                           ),
                         ),
                       ],
                     ),
                   ),
-                );
-              }).toList(),
-            ),
-            const SizedBox(height: 16),
-
-            // 选择二级分类
-            if (_subCategories.isNotEmpty) ...[
-              const Text(
-                '选择子分类',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-              const SizedBox(height: 12),
-              Wrap(
+                )
+              else
+                Wrap(
                 spacing: 10,
                 runSpacing: 10,
-                children: _subCategories.map((subCat) {
-                  final isSelected = _selectedSubCategory == subCat.name;
-                  final color = _getCategoryColor(_selectedMainCategory ?? '');
+                children: _mainCategories.map((category) {
+                  final isSelected = _selectedMainCategory == category.name;
+                  final color = _getCategoryColor(category.name);
 
                   return GestureDetector(
-                    onTap: () {
-                      setState(() {
-                        _selectedSubCategory = subCat.name;
-                      });
-                    },
+                    onTap: () => _onMainCategoryChanged(category.name),
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                       decoration: BoxDecoration(
@@ -516,13 +543,13 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Icon(
-                            _getCategoryIcon(subCat.icon),
+                            _getCategoryIcon(category.icon),
                             color: isSelected ? Colors.white : color,
                             size: 16,
                           ),
                           const SizedBox(width: 6),
                           Text(
-                            subCat.name,
+                            category.name,
                             style: TextStyle(
                               color: isSelected ? Colors.white : Colors.black,
                               fontWeight: FontWeight.w500,
@@ -535,6 +562,66 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
                   );
                 }).toList(),
               ),
+              const SizedBox(height: 16),
+
+              // 选择二级分类
+              if (_subCategories.isNotEmpty) ...[
+                const Text(
+                  '选择子分类',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: _subCategories.map((subCat) {
+                    final isSelected = _selectedSubCategory == subCat.name;
+                    final color = _getCategoryColor(_selectedMainCategory ?? '');
+
+                    return GestureDetector(
+                      onTap: () {
+                        setState(() {
+                          _selectedSubCategory = subCat.name;
+                        });
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: isSelected ? color : Colors.grey.shade100,
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: isSelected ? color : Colors.grey.shade300,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              _getCategoryIcon(subCat.icon),
+                              color: isSelected ? Colors.white : color,
+                              size: 16,
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              subCat.name,
+                              style: TextStyle(
+                                color: isSelected ? Colors.white : Colors.black,
+                                fontWeight: FontWeight.w500,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+                const SizedBox(height: 20),
+              ],
+            ] else ...[
               const SizedBox(height: 20),
             ],
 

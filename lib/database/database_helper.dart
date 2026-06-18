@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import '../models/account.dart';
 import '../models/transaction.dart' as model;
@@ -516,5 +517,406 @@ class DatabaseHelper {
       return CategoryBudget.fromMap(found.first);
     }
     return null;
+  }
+
+  // 删除分类预算
+  Future<void> deleteCategoryBudget(String month, String categoryName) async {
+    await _ensureInitialized();
+    _data['category_budgets']!.removeWhere(
+      (b) => b['month'] == month && b['category_name'] == categoryName,
+    );
+    await _save();
+  }
+
+  /// 获取指定分类在当前月份的支出金额
+  Future<double> getCategorySpendingForName(String categoryName) async {
+    await _ensureInitialized();
+    final now = DateTime.now();
+    final startOfMonth = DateTime(now.year, now.month, 1);
+    final endOfMonth = DateTime(now.year, now.month + 1, 1);
+    double total = 0;
+    for (final t in _data['transactions']!) {
+      final date = DateTime.parse(t['transaction_date']);
+      if (date.isAfter(startOfMonth) && date.isBefore(endOfMonth)) {
+        final amount = (t['amount'] as num).toDouble();
+        if (amount < 0) {
+          final cat = t['subcategory'] ?? t['category'] as String;
+          if (cat == categoryName) {
+            total += amount.abs();
+          }
+        }
+      }
+    }
+    return total;
+  }
+
+  // 获取当月所有分类预算（含总支出数据）
+  Future<List<Map<String, dynamic>>> getCategoryBudgetsWithSpending(String month) async {
+    await _ensureInitialized();
+    final categoryBudgets = _data['category_budgets']!.where((b) => b['month'] == month).toList();
+
+    // 计算当月各分类实际支出
+    final startOfMonth = DateTime(int.parse(month.split('-')[0]), int.parse(month.split('-')[1]), 1);
+    final endOfMonth = DateTime(int.parse(month.split('-')[0]), int.parse(month.split('-')[1]) + 1, 1);
+
+    Map<String, double> actualSpending = {};
+    for (final t in _data['transactions']!) {
+      final date = DateTime.parse(t['transaction_date']);
+      if (date.isAfter(startOfMonth) && date.isBefore(endOfMonth)) {
+        final amount = (t['amount'] as num).toDouble();
+        if (amount < 0) {
+          final cat = t['subcategory'] ?? t['category'] as String;
+          actualSpending[cat] = (actualSpending[cat] ?? 0) + amount.abs();
+        }
+      }
+    }
+
+    // 合并预算和支出数据
+    List<Map<String, dynamic>> result = [];
+    for (final cb in categoryBudgets) {
+      final categoryName = cb['category_name'] as String;
+      final budgetAmount = (cb['budget_amount'] as num).toDouble();
+      final spent = actualSpending[categoryName] ?? 0.0;
+      result.add({
+        'category_name': categoryName,
+        'budget_amount': budgetAmount,
+        'spent': spent,
+        'remaining': budgetAmount - spent,
+        'progress': budgetAmount > 0 ? (spent / budgetAmount).clamp(0.0, 1.0) : 0.0,
+      });
+    }
+    return result;
+  }
+
+  // ========== 聚合分类预算（大类+子分类层级） ==========
+  /// 返回按主分类聚合的预算数据，用于首页树形进度条展示
+  Future<List<Map<String, dynamic>>> getAggregatedCategoryBudgets(String month) async {
+    await _ensureInitialized();
+
+    // 1. 获取当月所有分类预算记录
+    final categoryBudgets = _data['category_budgets']!.where((b) => b['month'] == month).toList();
+
+    // 2. 计算当月各分类实际支出
+    final startOfMonth = DateTime(int.parse(month.split('-')[0]), int.parse(month.split('-')[1]), 1);
+    final endOfMonth = DateTime(int.parse(month.split('-')[0]), int.parse(month.split('-')[1]) + 1, 1);
+
+    Map<String, double> actualSpending = {};
+    for (final t in _data['transactions']!) {
+      final date = DateTime.parse(t['transaction_date']);
+      if (date.isAfter(startOfMonth) && date.isBefore(endOfMonth)) {
+        final amount = (t['amount'] as num).toDouble();
+        if (amount < 0) {
+          final cat = t['subcategory'] ?? t['category'] as String;
+          actualSpending[cat] = (actualSpending[cat] ?? 0) + amount.abs();
+        }
+      }
+    }
+
+    // 3. 按主分类分组聚合
+    // 先建立分类名 -> 主分类名的映射
+    final allCategories = _data['categories']!
+        .map((map) => Category.fromMap(map))
+        .toList();
+
+    Map<String, String> categoryToParent = {};
+    for (final cat in allCategories) {
+      if (cat.parentName != null) {
+        categoryToParent[cat.name] = cat.parentName!;
+      }
+    }
+
+    // 找出所有有预算的主分类
+    Set<String> mainCategoriesWithBudget = {};
+    for (final cb in categoryBudgets) {
+      final catName = cb['category_name'] as String;
+      final parent = categoryToParent[catName];
+      if (parent != null) {
+        mainCategoriesWithBudget.add(parent);
+      } else {
+        // 主分类本身有预算
+        mainCategoriesWithBudget.add(catName);
+      }
+    }
+
+    // 获取主分类的 icon 和 color 信息
+    Map<String, Category> categoryMap = {};
+    for (final cat in allCategories) {
+      if (cat.parentName == null) {
+        categoryMap[cat.name] = cat;
+      }
+    }
+
+    // 构建聚合结果
+    List<Map<String, dynamic>> result = [];
+    for (final mainName in mainCategoriesWithBudget) {
+      final mainCat = categoryMap[mainName];
+      final color = _getCategoryColor(mainName);
+      final icon = mainCat?.icon ?? 'category';
+
+      // 聚合预算和支出
+      double mainBudget = 0;
+      double mainSpent = 0;
+      List<Map<String, dynamic>> subList = [];
+
+      // 遍历所有预算记录，归属到对应主分类
+      for (final cb in categoryBudgets) {
+        final catName = cb['category_name'] as String;
+        final budgetAmount = (cb['budget_amount'] as num).toDouble();
+        final spent = actualSpending[catName] ?? 0.0;
+
+        final parent = categoryToParent[catName];
+        if (parent == mainName) {
+          // 子分类属于当前主分类，只保留预算 > 0 的
+          if (budgetAmount > 0) {
+            mainBudget += budgetAmount;
+            mainSpent += spent;
+            subList.add({
+              'name': catName,
+              'icon': _getCategoryIconForName(catName),
+              'budget': budgetAmount,
+              'spent': spent,
+              'progress': budgetAmount > 0 ? (spent / budgetAmount).clamp(0.0, 1.0) : 0.0,
+            });
+          }
+        } else if (catName == mainName) {
+          // 主分类自身有预算，只保留预算 > 0 的
+          if (budgetAmount > 0) {
+            mainBudget += budgetAmount;
+            mainSpent += spent;
+          }
+        }
+      }
+
+      // 只保留总预算 > 0 的主分类
+      if (mainBudget > 0) {
+        result.add({
+          'main_category': mainName,
+          'main_icon': icon,
+          'main_color': color,
+          'main_budget': mainBudget,
+          'main_spent': mainSpent,
+          'main_remaining': mainBudget - mainSpent,
+          'main_progress': mainBudget > 0 ? (mainSpent / mainBudget).clamp(0.0, 1.0) : 0.0,
+          'subcategories': subList,
+        });
+      }
+    }
+
+    // 按主分类 sort_order 排序
+    result.sort((a, b) {
+      final catA = categoryMap[a['main_category']];
+      final catB = categoryMap[b['main_category']];
+      return (catA?.sortOrder ?? 0).compareTo(catB?.sortOrder ?? 0);
+    });
+
+    return result;
+  }
+
+  String _getCategoryIconForName(String name) {
+    for (final cat in _data['categories']!) {
+      final c = Category.fromMap(cat);
+      if (c.name == name) return c.icon;
+    }
+    return 'category';
+  }
+
+  Color _getCategoryColor(String name) {
+    switch (name) {
+      case '餐饮':
+        return Colors.orange;
+      case '交通':
+        return Colors.blue;
+      case '生活':
+        return Colors.green;
+      case '饮料酒水':
+        return Colors.purple;
+      case '比赛/活动':
+        return Colors.amber;
+      case '娱乐':
+        return Colors.pink;
+      case '购物':
+        return Colors.indigo;
+      case '其他':
+        return Colors.grey;
+      default:
+        return Colors.teal;
+    }
+  }
+
+  // ========== 获取当月有预算分配的主分类列表 ==========
+  /// 返回当月有预算记录的主分类名列表，用于添加账单页面筛选
+  Future<List<String>> getBudgetAssignedCategories(String month, String type) async {
+    await _ensureInitialized();
+
+    final categoryBudgets = _data['category_budgets']!.where((b) => b['month'] == month).toList();
+    final allCategories = _data['categories']!
+        .map((map) => Category.fromMap(map))
+        .where((c) => c.type == type)
+        .toList();
+
+    // 建立分类名 -> 主分类名的映射
+    Map<String, String> categoryToParent = {};
+    for (final cat in allCategories) {
+      if (cat.parentName != null) {
+        categoryToParent[cat.name] = cat.parentName!;
+      }
+    }
+
+    // 找出有预算（>0）的主分类
+    Map<String, double> mainCategoryBudgetSum = {};
+    for (final cb in categoryBudgets) {
+      final catName = cb['category_name'] as String;
+      final budgetAmount = (cb['budget_amount'] as num).toDouble();
+      if (budgetAmount <= 0) continue;
+
+      final parent = categoryToParent[catName];
+      if (parent != null) {
+        mainCategoryBudgetSum[parent] = (mainCategoryBudgetSum[parent] ?? 0) + budgetAmount;
+      } else {
+        // 检查该主分类是否在指定类型中
+        final isMainOfType = allCategories.any((c) => c.name == catName && c.parentName == null);
+        if (isMainOfType) {
+          mainCategoryBudgetSum[catName] = (mainCategoryBudgetSum[catName] ?? 0) + budgetAmount;
+        }
+      }
+    }
+
+    // 只返回总预算 > 0 的主分类
+    return mainCategoryBudgetSum.entries
+        .where((e) => e.value > 0)
+        .map((e) => e.key)
+        .toList();
+  }
+
+  // ========== 历史查询方法 ==========
+
+  /// 获取某年的所有交易记录
+  Future<List<model.Transaction>> getTransactionsByYear(int year) async {
+    await _ensureInitialized();
+    final startOfYear = DateTime(year, 1, 1);
+    final endOfYear = DateTime(year + 1, 1, 1);
+
+    return _data['transactions']!
+        .map((map) => model.Transaction.fromMap(map))
+        .where((t) =>
+            t.transactionDate.isAfter(startOfYear) &&
+            t.transactionDate.isBefore(endOfYear))
+        .toList()
+      ..sort((a, b) => b.transactionDate.compareTo(a.transactionDate));
+  }
+
+  /// 获取某月的汇总数据
+  Future<Map<String, dynamic>> getMonthSummary(int year, int month) async {
+    await _ensureInitialized();
+    final startOfMonth = DateTime(year, month, 1);
+    final endOfMonth = DateTime(year, month + 1, 1);
+
+    double totalSpending = 0;
+    double totalIncome = 0;
+    Map<String, double> spendingByCategory = {};
+    Map<String, double> incomeByCategory = {};
+
+    for (final t in _data['transactions']!) {
+      final date = DateTime.parse(t['transaction_date']);
+      if (date.isAfter(startOfMonth) && date.isBefore(endOfMonth)) {
+        final amount = (t['amount'] as num).toDouble();
+        if (amount < 0) {
+          totalSpending += amount.abs();
+          final cat = t['subcategory'] ?? t['category'] as String;
+          spendingByCategory[cat] = (spendingByCategory[cat] ?? 0) + amount.abs();
+        } else if (amount > 0) {
+          totalIncome += amount;
+          final cat = t['subcategory'] ?? t['category'] as String;
+          incomeByCategory[cat] = (incomeByCategory[cat] ?? 0) + amount;
+        }
+      }
+    }
+
+    final budget = await getBudgetByMonth('$year-${month.toString().padLeft(2, '0')}');
+    final budgetTotal = budget?.totalAmount ?? 0;
+
+    return {
+      'total_spending': totalSpending,
+      'total_income': totalIncome,
+      'budget_total': budgetTotal,
+      'spending_by_category': spendingByCategory,
+      'income_by_category': incomeByCategory,
+    };
+  }
+
+  /// 获取某年每月的收支汇总
+  Future<List<Map<String, dynamic>>> getMonthlyTrend(int year) async {
+    await _ensureInitialized();
+    List<Map<String, dynamic>> result = [];
+
+    for (int month = 1; month <= 12; month++) {
+      final startOfMonth = DateTime(year, month, 1);
+      final endOfMonth = DateTime(year, month + 1, 1);
+
+      double spending = 0;
+      double income = 0;
+
+      for (final t in _data['transactions']!) {
+        final date = DateTime.parse(t['transaction_date']);
+        if (date.isAfter(startOfMonth) && date.isBefore(endOfMonth)) {
+          final amount = (t['amount'] as num).toDouble();
+          if (amount < 0) spending += amount.abs();
+          if (amount > 0) income += amount;
+        }
+      }
+
+      // 跳过没有数据的月份
+      if (spending > 0 || income > 0) {
+        result.add({
+          'month': month,
+          'spending': spending,
+          'income': income,
+        });
+      }
+    }
+
+    return result;
+  }
+
+  /// 获取内部数据（供调试和外部访问）
+  Map<String, List<Map<String, dynamic>>> get data => _data;
+
+  /// 添加自定义主分类
+  Future<int> insertCustomMainCategory(String name, String icon) async {
+    await _ensureInitialized();
+    final id = _nextId('categories');
+    _data['categories']!.add({
+      'id': id,
+      'name': name,
+      'parent_name': null,
+      'icon': icon,
+      'sort_order': 999,
+      'type': 'expense',
+    });
+    await _save();
+    return id;
+  }
+
+  /// 添加自定义子分类
+  Future<int> insertCustomSubCategory(String mainName, String subName, String icon) async {
+    await _ensureInitialized();
+    final id = _nextId('categories');
+    _data['categories']!.add({
+      'id': id,
+      'name': subName,
+      'parent_name': mainName,
+      'icon': icon,
+      'sort_order': 999,
+      'type': 'expense',
+    });
+    await _save();
+    return id;
+  }
+
+  /// 删除自定义主分类及其所有子分类
+  Future<void> deleteCustomCategory(String mainName) async {
+    await _ensureInitialized();
+    _data['categories']!.removeWhere((c) => c['name'] == mainName || c['parent_name'] == mainName);
+    await _save();
   }
 }
