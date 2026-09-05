@@ -1,10 +1,12 @@
 allprojects {
     repositories {
+        // Prefer the authoritative repositories. Aliyun mirrors remain as
+        // fallbacks for networks where Google/Maven Central are difficult to reach.
+        google()
+        mavenCentral()
         maven { url = uri("https://maven.aliyun.com/repository/google") }
         maven { url = uri("https://maven.aliyun.com/repository/central") }
         maven { url = uri("https://maven.aliyun.com/repository/public") }
-        google()
-        mavenCentral()
     }
 }
 
