@@ -1,4 +1,4 @@
-import 'package:sqflite/sqflite.dart';
+import 'package:sqflite/sqflite.dart' hide Transaction;
 
 import '../../database/database_helper.dart';
 import '../../database/v2/pending_capture_repository.dart';
