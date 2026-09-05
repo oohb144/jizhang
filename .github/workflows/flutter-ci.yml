@@ -4,11 +4,12 @@ on:
   push:
     branches:
       - main
-      - feat/smart-bookkeeping-v2
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
 
 jobs:
   test:
+    if: github.event_name == 'push' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
