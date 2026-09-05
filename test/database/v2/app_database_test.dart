@@ -4,7 +4,7 @@ import 'package:jizhang/database/v2/account_repository.dart';
 import 'package:jizhang/database/v2/transaction_repository.dart';
 import 'package:jizhang/models/account.dart';
 import 'package:jizhang/models/transaction.dart';
-import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart' hide Transaction;
 
 void main() {
   late AppDatabaseV2 database;
