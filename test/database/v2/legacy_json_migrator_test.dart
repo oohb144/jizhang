@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:jizhang/database/v2/account_repository.dart';
 import 'package:jizhang/database/v2/app_database.dart';
 import 'package:jizhang/database/v2/legacy_json_migrator.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -9,7 +10,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 void main() {
   setUpAll(sqfliteFfiInit);
 
-  test('migrates legacy JSON once and preserves the source file', () async {
+  test('migrates legacy JSON once, preserves balances and source file', () async {
     final database = await AppDatabaseV2.open(
       factory: databaseFactoryFfi,
       path: inMemoryDatabasePath,
@@ -70,6 +71,10 @@ void main() {
     );
     expect(transactions[0]['type'], 'expense');
     expect(transactions[1]['type'], 'income');
+
+    final accounts = AccountRepository(database.db);
+    expect(await accounts.balanceForAccount(1), closeTo(300.0, 0.001));
+    expect(await accounts.balanceForAccount(2), closeTo(500.0, 0.001));
     expect(await source.readAsString(), original);
 
     await database.close();
