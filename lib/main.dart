@@ -4,6 +4,7 @@ import 'database/v2/data_store_bootstrap.dart';
 import 'screens/home_screen.dart';
 import 'services/app_runtime.dart';
 import 'services/auto_capture/auto_capture_coordinator.dart';
+import 'services/auto_capture/native_capture_bridge.dart';
 
 DataStoreBootstrapResult? v2DataStore;
 
@@ -58,12 +59,16 @@ class _AutoCaptureAwareHomeState extends State<AutoCaptureAwareHome>
     with WidgetsBindingObserver {
   int _revision = 0;
   bool _processing = false;
+  bool _permissionPromptShown = false;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    WidgetsBinding.instance.addPostFrameCallback((_) => _processCaptures());
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await _processCaptures();
+      await _ensureNotificationAccess();
+    });
   }
 
   @override
@@ -92,6 +97,42 @@ class _AutoCaptureAwareHomeState extends State<AutoCaptureAwareHome>
     } finally {
       _processing = false;
     }
+  }
+
+  Future<void> _ensureNotificationAccess() async {
+    if (_permissionPromptShown || !mounted) return;
+    bool enabled;
+    try {
+      enabled = await const NativeCaptureBridge().isNotificationAccessEnabled();
+    } catch (_) {
+      return;
+    }
+    if (enabled || !mounted) return;
+    _permissionPromptShown = true;
+
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('开启自动记账'),
+        content: const Text(
+          '开启“通知使用权”后，记账本才能在微信、支付宝等产生支付通知时自动识别金额。'
+          '只保存结构化账单信息，不保存完整通知内容。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('稍后'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              await const NativeCaptureBridge().openNotificationAccessSettings();
+            },
+            child: const Text('去开启'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
