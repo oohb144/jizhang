@@ -26,6 +26,11 @@ jobs:
           channel: stable
           cache: true
 
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: current
+
       - name: Flutter version
         run: flutter --version
 
@@ -40,4 +45,4 @@ jobs:
 
       - name: Android unit tests
         working-directory: android
-        run: ./gradlew testDebugUnitTest
+        run: gradle testDebugUnitTest
