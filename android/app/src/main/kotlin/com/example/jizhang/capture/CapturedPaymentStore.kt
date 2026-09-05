@@ -7,11 +7,17 @@ import org.json.JSONObject
 object CapturedPaymentStore {
     private const val PREFS = "jizhang_auto_capture"
     private const val KEY_QUEUE = "candidate_queue"
+    private const val KEY_RECENT = "recent_fingerprints"
     private const val MAX_QUEUE = 200
+    private const val RECENT_TTL_MS = 10 * 60 * 1000L
 
     @Synchronized
     fun enqueue(context: Context, candidate: PaymentCandidate, receivedAtMillis: Long, fingerprint: String) {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val recent = readObject(prefs.getString(KEY_RECENT, null))
+        purgeOld(recent, receivedAtMillis)
+        if (recent.has(fingerprint)) return
+
         val array = readArray(prefs.getString(KEY_QUEUE, null))
         val item = JSONObject().apply {
             put("amount", candidate.amount)
@@ -24,10 +30,13 @@ object CapturedPaymentStore {
             put("receivedAt", receivedAtMillis)
         }
         array.put(item)
-        while (array.length() > MAX_QUEUE) {
-            array.remove(0)
-        }
-        prefs.edit().putString(KEY_QUEUE, array.toString()).apply()
+        while (array.length() > MAX_QUEUE) array.remove(0)
+        recent.put(fingerprint, receivedAtMillis)
+
+        prefs.edit()
+            .putString(KEY_QUEUE, array.toString())
+            .putString(KEY_RECENT, recent.toString())
+            .apply()
     }
 
     @Synchronized
@@ -52,9 +61,23 @@ object CapturedPaymentStore {
         return result
     }
 
+    private fun purgeOld(objectValue: JSONObject, now: Long) {
+        val keys = objectValue.keys().asSequence().toList()
+        for (key in keys) {
+            val timestamp = objectValue.optLong(key, 0L)
+            if (timestamp <= 0 || now - timestamp > RECENT_TTL_MS) objectValue.remove(key)
+        }
+    }
+
     private fun readArray(value: String?): JSONArray = try {
         if (value.isNullOrBlank()) JSONArray() else JSONArray(value)
     } catch (_: Exception) {
         JSONArray()
+    }
+
+    private fun readObject(value: String?): JSONObject = try {
+        if (value.isNullOrBlank()) JSONObject() else JSONObject(value)
+    } catch (_: Exception) {
+        JSONObject()
     }
 }
