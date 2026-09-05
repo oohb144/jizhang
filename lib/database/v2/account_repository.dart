@@ -44,6 +44,8 @@ class AccountRepository {
     );
   }
 
+  Future<double> balanceForAccount(int accountId) => derivedBalance(accountId);
+
   Future<double> derivedBalance(int accountId) async {
     final account = await getById(accountId);
     if (account == null) {
