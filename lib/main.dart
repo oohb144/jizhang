@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'database/v2/data_store_bootstrap.dart';
 import 'screens/home_screen.dart';
+import 'services/app_runtime.dart';
 
 DataStoreBootstrapResult? v2DataStore;
 
@@ -10,9 +11,8 @@ Future<void> main() async {
 
   try {
     v2DataStore = await DataStoreBootstrap.initialize();
+    AppRuntime.v2Database = v2DataStore?.database.db;
   } catch (error, stackTrace) {
-    // V2 migration is additive during Phase 1. If it fails, the current JSON
-    // backed UI remains usable and the original JSON file is left untouched.
     debugPrint('V2 datastore initialization failed: $error');
     debugPrintStack(stackTrace: stackTrace);
   }
