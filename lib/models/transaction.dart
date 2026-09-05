@@ -107,7 +107,7 @@ class Transaction {
   }
 
   static TransactionType _inferLegacyType(double amount) {
-    return amount < 0 ? TransactionType.income : TransactionType.expense;
+    return amount < 0 ? TransactionType.expense : TransactionType.income;
   }
 
   static bool _readBool(dynamic value) {
